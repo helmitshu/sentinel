@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: sentinel
+Version: 0.1.0
+Summary: Predictive maintenance engine: catch equipment failures before they happen.
+Requires-Python: >=3.10
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: scikit-learn
+Requires-Dist: scipy
+Provides-Extra: api
+Requires-Dist: fastapi; extra == "api"
+Requires-Dist: uvicorn; extra == "api"
+Provides-Extra: dashboard
+Requires-Dist: streamlit; extra == "dashboard"
+Provides-Extra: llm
+Requires-Dist: anthropic; extra == "llm"
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
