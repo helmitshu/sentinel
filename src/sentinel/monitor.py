@@ -2,8 +2,9 @@
 
 
 A MachineMonitor owns one machine's full pipeline: ingest readings, maintain
-a rolling feature buffer, score with the Isolation Forest, track health, and
-log alerts with grounded explanations when the state changes.
+a rolling feature buffer, score with the Isolation Forest plus per-sensor
+z-scores, track health, and log alerts with grounded explanations when the
+state changes.
 
 The detector is fitted on the first `baseline_readings` readings (the
 commissioning period), exactly like the validation harness.
@@ -14,7 +15,7 @@ from collections import deque
 
 import numpy as np
 import pandas as pd
-from sentinel.detectors import IsolationForestDetector
+from sentinel.detectors import IsolationForestDetector, ZScoreDetector
 from sentinel.diagnostics import diagnose
 from sentinel.explainer import TemplateExplainer
 from sentinel.features import FEATURES, compute_features, feature_columns
@@ -30,14 +31,17 @@ class MachineMonitor:
         window: int = 60,
         baseline_readings: int = 10 * 1440,
         sensors: list[str] | None = None,
+        sensor_units: dict[str, str] | None = None,
     ):
         self.machine_id = machine_id
         self.window = window
         self.baseline_readings = baseline_readings
         self.sensors = list(sensors) if sensors else list(SENSORS)
+        self.sensor_units = dict(sensor_units) if sensor_units else {}
         self._readings: deque[dict] = deque(maxlen=100_000)  # ~69 days at 1/min
         self._processed = 0  # readings consumed into feature windows
         self._detector: IsolationForestDetector | None = None
+        self._zdetector: ZScoreDetector | None = None
         self._tracker: HealthTracker | None = None
         self._baseline_features: pd.DataFrame | None = None
         self._last_state = "ok"
@@ -46,6 +50,9 @@ class MachineMonitor:
         self._worst_rank = 0  # worst state rank seen since the last ok (0=ok..3=alert)
         self._last_score = 0.0  # normalized anomaly score of the most recent window
         self._last_raw_score = 0.0  # unclipped IF score before median/p99 scaling
+        self._last_z = 0.0  # max |z| across sensors in the most recent window
+        self._last_z_norm = 0.0  # z component of the combined score, in [0, 1]
+        self._last_if_score = 0.0  # IF component of the combined score, in [0, 1]
         self._last_features: dict | None = None  # feature row of the most recent window
         self._history: list[dict] = []  # per-window {timestamp, health, state}
         self.alerts: list[dict] = []
@@ -57,7 +64,7 @@ class MachineMonitor:
 
     def ingest(self, readings: list[dict]) -> dict:
         """Add raw readings; returns the machine's current status."""
-        df = validate(pd.DataFrame(readings))
+        df = validate(pd.DataFrame(readings), sensors=self.sensors)
         if (df["machine_id"] != self.machine_id).any():
             raise ValueError("all readings must belong to this monitor's machine")
         before = len(self._readings)
@@ -77,21 +84,45 @@ class MachineMonitor:
 
         return self.status()
 
+    def _window_z(self, df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+        """Per tumbling window: (z_norm in [0,1], max |z| across sensors).
+
+        The z layer is the fast layer: it catches sharp per-reading spikes
+        that a windowed multivariate model can smooth over. z_norm maps the
+        detector threshold to 0.5 and twice the threshold to 1.0.
+        """
+        assert self._zdetector is not None
+        max_z = self._zdetector.score(df)["max_z"].to_numpy()
+        n_windows = len(max_z) // self.window
+        # df always holds whole windows here (calibration baseline and drain
+        # chunks are window multiples); trim a ragged tail defensively.
+        trimmed = max_z[: n_windows * self.window].reshape(n_windows, self.window)
+        per_window = trimmed.max(axis=1)
+        z_norm = np.clip(per_window / (2 * self._zdetector.threshold), 0, 1)
+        return z_norm, per_window
+
     def _calibrate(self) -> None:
         df = pd.DataFrame(list(self._readings)[: self.baseline_readings])
         feats = compute_features(df, window=self.window, sensors=self.sensors)
         cols = feature_columns(self.sensors)
         self._baseline_features = feats
-        self._detector = IsolationForestDetector().fit(feats)
-        baseline = float(self._detector.score(feats).mean())
+        self._detector = IsolationForestDetector().fit(feats, columns=cols)
+        self._zdetector = ZScoreDetector(sensors=self.sensors).fit(df)
+        if_scores = self._detector.score(feats)
+        z_norms, z_max = self._window_z(df)
+        n = min(len(if_scores), len(z_norms))
+        combined = np.maximum(if_scores[:n], z_norms[:n])
+        baseline = float(combined.mean())
         self._tracker = HealthTracker(alpha=0.05, baseline=baseline)
         last = {"health": 100.0, "state": "ok"}
-        scored = self._detector.score(feats)
         raw_scored = -self._detector.model.decision_function(feats[cols])
-        for v, raw in zip(scored, raw_scored):
-            last = self._tracker.update(v)
-        self._last_score = float(scored[-1])
-        self._last_raw_score = float(raw_scored[-1])
+        for v, raw in zip(combined, raw_scored):
+            last = self._tracker.update(float(v))
+        self._last_score = float(combined[-1])
+        self._last_if_score = float(if_scores[n - 1])
+        self._last_raw_score = float(raw_scored[n - 1])
+        self._last_z = float(z_max[n - 1])
+        self._last_z_norm = float(z_norms[n - 1])
         last_row = feats.iloc[-1].to_dict()
         self._last_features = {k: v for k, v in last_row.items()
                                if k not in ("timestamp", "machine_id")}
@@ -112,16 +143,24 @@ class MachineMonitor:
         assert len(feats) == new_windows, f"{len(feats)} != {new_windows}"
         cols = self._detector._columns or feature_columns(self.sensors)
         raw_scores = -self._detector.model.decision_function(feats[cols])
-        scores = self._detector.score(feats)
+        if_scores = self._detector.score(feats)
+        z_norms, z_max = self._window_z(chunk)
+        assert len(z_norms) == new_windows, f"{len(z_norms)} != {new_windows}"
+        # either layer can raise the alarm independently: the health tracker
+        # sees the worst credible signal from the two detectors
+        scores = np.maximum(if_scores, z_norms)
         feat_rows = feats.to_dict("records")
-        for i, (ts, score, raw, frow) in enumerate(
-            zip(feats["timestamp"], scores, raw_scores, feat_rows)
+        for i, (ts, score, if_s, raw, zm, zn, frow) in enumerate(
+            zip(feats["timestamp"], scores, if_scores, raw_scores, z_max, z_norms, feat_rows)
         ):
             res = self._tracker.update(float(score))
             self._last_health, self._last_state = res["health"], res["state"]
             self._last_trend = res["trend"]
             self._last_score = float(score)
+            self._last_if_score = float(if_s)
             self._last_raw_score = float(raw)
+            self._last_z = float(zm)
+            self._last_z_norm = float(zn)
             self._last_features = {k: v for k, v in frow.items()
                                    if k not in ("timestamp", "machine_id")}
             self._history.append(
@@ -174,7 +213,9 @@ class MachineMonitor:
         recent = compute_features(
             df.iloc[start:window_end], window=self.window, sensors=self.sensors
         )
-        findings, stable = diagnose(self._baseline_features, recent)
+        findings, stable = diagnose(self._baseline_features, recent,
+                                     sensors=self.sensors,
+                                     sensor_units=self.sensor_units)
         hint, confidence = classify(findings)
         action = "inspect at the next planned stop"
         if "bearing" in hint:
@@ -247,15 +288,28 @@ class MachineMonitor:
                 "thresholds": {"watch": 90, "advisory": 80, "alert": 60},
             },
             "anomaly": {
-                "formula": "score = clip((raw - median) / (p99 - median), 0, 1)",
-                "description": "Isolation Forest: how far this window's feature fingerprint "
-                               "sits outside the baseline distribution.",
+                "formula": "score = max(if_score, z_norm)",
+                "description": "Two detectors vote; the health tracker sees the worst "
+                               "credible signal. if_score is the Isolation Forest: how "
+                               "far this window's feature fingerprint sits outside the "
+                               "baseline distribution. z_norm is the fast z-score layer: "
+                               "the sharpest per-reading spike inside the window.",
                 "baseline_median": round(det._median, 4),
                 "baseline_p99": round(det._p99, 4),
                 "last_raw_score": round(self._last_raw_score, 4),
+                "last_if_score": round(self._last_if_score, 4),
                 "last_normalized_score": round(self._last_score, 4),
                 "contamination": det.model.contamination,
                 "window_readings": self.window,
+            },
+            "zscore": {
+                "formula": "z_norm = clip(max_z / (2 * threshold), 0, 1)",
+                "description": "Per-sensor z against the baseline mean/std; max |z| "
+                               "across sensors and readings in the window. "
+                               "z = threshold scores 0.5, z = 2 * threshold scores 1.0.",
+                "threshold": self._zdetector.threshold if self._zdetector else None,
+                "last_max_z": round(self._last_z, 3),
+                "last_z_norm": round(self._last_z_norm, 4),
             },
             "sensors": sensors,
             "features": {
@@ -274,7 +328,10 @@ class MachineMonitor:
             "readings": len(self._readings),
             "alerts": len(self.alerts),
             "trend": self._last_trend,
-            "trend": self._last_trend,
+            "anomaly_score": round(self._last_score, 4),
+            "if_score": round(self._last_if_score, 4),
+            "z_max": round(self._last_z, 3),
+            "z_score": round(self._last_z_norm, 4),
         }
 
     def telemetry(self, n: int = 1440) -> list[dict]:

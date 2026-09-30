@@ -1,32 +1,44 @@
-"""Realistic sensor stream simulator for a centrifugal pump.
+"""Sensor stream simulator driven by industry templates.
 
 Generates minute-resolution telemetry with daily operating cycles and noise,
-plus injectable fault signatures (bearing wear, overheating, sensor drift).
-Seedable for reproducibility. The demo and the test suite both run on this;
-production use replaces it with real telemetry through the same schema.
+plus injectable fault signatures. Seedable for reproducibility. The demo and
+the test suite run on this; production use replaces it with real telemetry
+through the same schema.
+
+PumpSimulator keeps the original pump behavior exactly (same signals, same
+defaults) so existing tests and demos are unaffected.
 """
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
-SENSORS: dict[str, dict[str, float]] = {
-    "vibration": {"unit": "mm/s", "base": 2.1, "noise": 0.15, "cycle_amp": 0.20},
-    "bearing_temp": {"unit": "C", "base": 62.0, "noise": 0.80, "cycle_amp": 2.0},
-    "discharge_pressure": {"unit": "bar", "base": 4.2, "noise": 0.05, "cycle_amp": 0.10},
-    "rpm": {"unit": "rpm", "base": 2950.0, "noise": 8.0, "cycle_amp": 15.0},
-    "motor_current": {"unit": "A", "base": 42.0, "noise": 0.60, "cycle_amp": 1.0},
-}
+from sentinel.industries import (
+    FAULTS,
+    PUMP_FAULTS,
+    PUMP_SENSORS,
+    get_template,
+    shape_curve,
+)
 
-FAULTS = ("bearing_wear", "overheating", "sensor_drift")
+# Backward-compatible alias: the original module-level sensor spec.
+SENSORS = PUMP_SENSORS
 
 
-class PumpSimulator:
-    """Simulates one pump's telemetry. All randomness is seeded."""
+class MachineSimulator:
+    """Simulates one machine's telemetry from an industry template."""
 
-    def __init__(self, machine_id: str = "P-104", seed: int = 42):
+    def __init__(
+        self,
+        machine_id: str = "M-001",
+        seed: int = 42,
+        sensors: dict[str, dict[str, float]] | None = None,
+        fault_effects: dict[str, list[tuple[str, str, float, str]]] | None = None,
+    ):
         self.machine_id = machine_id
         self.seed = seed
+        self.sensors = sensors if sensors is not None else PUMP_SENSORS
+        self.fault_effects = fault_effects if fault_effects is not None else PUMP_FAULTS
 
     def run(
         self,
@@ -61,25 +73,24 @@ class PumpSimulator:
 
         signal: dict[str, np.ndarray] = {}
         noise_amp: dict[str, np.ndarray] = {}
-        for name, spec in SENSORS.items():
+        for name, spec in self.sensors.items():
             signal[name] = spec["base"] + spec["cycle_amp"] * cycle
             noise_amp[name] = np.ones(n)
 
-        if fault == "bearing_wear":
-            signal["vibration"] = signal["vibration"] * (1 + 1.3 * q**2)
-            signal["bearing_temp"] = signal["bearing_temp"] + 15 * q**1.5
-            noise_amp["vibration"] = 1 + 1.5 * q
-            noise_amp["motor_current"] = 1 + 2.5 * q
-        elif fault == "overheating":
-            signal["bearing_temp"] = signal["bearing_temp"] + 25 * q
-            signal["vibration"] = signal["vibration"] * (1 + 0.25 * q)
-        elif fault == "sensor_drift":
-            # A failing sensor, not a failing machine. Only one channel moves.
-            # Drift is linear by nature, so it uses p, not the shaped q.
-            signal["vibration"] = signal["vibration"] + 1.5 * p
+        if fault is not None:
+            for sensor, kind, magnitude, shape in self.fault_effects.get(fault, []):
+                curve = shape_curve(shape, p)
+                if kind == "mult":
+                    signal[sensor] = signal[sensor] * (1 + magnitude * curve)
+                elif kind == "add":
+                    signal[sensor] = signal[sensor] + magnitude * curve
+                elif kind == "noise_mult":
+                    noise_amp[sensor] = noise_amp[sensor] * (1 + magnitude * curve)
+                else:  # pragma: no cover - guarded by template authoring
+                    raise ValueError(f"unknown effect kind {kind!r}")
 
         data: dict[str, np.ndarray] = {}
-        for name, spec in SENSORS.items():
+        for name, spec in self.sensors.items():
             data[name] = signal[name] + rng.normal(0, spec["noise"], n) * noise_amp[name]
 
         df = pd.DataFrame(data)
@@ -90,3 +101,26 @@ class PumpSimulator:
             pd.Timestamp("2026-01-01") + pd.to_timedelta(t, unit="m"),
         )
         return df
+
+
+class PumpSimulator(MachineSimulator):
+    """Simulates one pump's telemetry. All randomness is seeded."""
+
+    def __init__(self, machine_id: str = "P-104", seed: int = 42):
+        super().__init__(
+            machine_id=machine_id,
+            seed=seed,
+            sensors=PUMP_SENSORS,
+            fault_effects=PUMP_FAULTS,
+        )
+
+
+def simulator_for(industry: str, machine_id: str, seed: int) -> MachineSimulator:
+    """Build a simulator for an industry template id."""
+    tpl = get_template(industry)
+    return MachineSimulator(
+        machine_id=machine_id,
+        seed=seed,
+        sensors=tpl["sensors"],
+        fault_effects=tpl["faults"],
+    )
