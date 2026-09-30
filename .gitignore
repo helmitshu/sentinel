@@ -10,8 +10,8 @@ build/
 # scripts/prepare_data.py re-downloads them reproducibly.
 data/
 
-# Streamlit / FastAPI
-.streamlit/
+# Streamlit / FastAPI (theme is committed; secrets never are)
+.streamlit/secrets.toml
 *.log
 
 # OS / editor

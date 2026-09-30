@@ -21,13 +21,14 @@ from .simulator import SENSORS
 class ZScoreDetector:
     """Per-sensor z-scores against baseline mean/std."""
 
-    def __init__(self, threshold: float = 3.0):
+    def __init__(self, threshold: float = 3.0, sensors: list[str] | None = None):
         self.threshold = threshold
+        self.sensors = list(sensors) if sensors is not None else list(SENSORS)
         self._mean: dict[str, float] = {}
         self._std: dict[str, float] = {}
 
     def fit(self, df: pd.DataFrame) -> "ZScoreDetector":
-        for sensor in SENSORS:
+        for sensor in self.sensors:
             self._mean[sensor] = float(df[sensor].mean())
             std = float(df[sensor].std())
             self._std[sensor] = std if std > 0 else 1e-9
@@ -38,11 +39,11 @@ class ZScoreDetector:
         out = pd.DataFrame(
             {"timestamp": df["timestamp"], "machine_id": df["machine_id"]}
         )
-        for sensor in SENSORS:
+        for sensor in self.sensors:
             out[f"{sensor}_z"] = (
                 df[sensor].to_numpy() - self._mean[sensor]
             ) / self._std[sensor]
-        z_cols = [f"{s}_z" for s in SENSORS]
+        z_cols = [f"{s}_z" for s in self.sensors]
         out["max_z"] = out[z_cols].abs().max(axis=1)
         out["flagged"] = out["max_z"] > self.threshold
         return out

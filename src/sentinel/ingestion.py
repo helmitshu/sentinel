@@ -12,18 +12,25 @@ from .simulator import SENSORS
 REQUIRED_COLUMNS = ["timestamp", "machine_id", *SENSORS]
 
 
-def validate(df: pd.DataFrame) -> pd.DataFrame:
-    """Check schema and types. Returns a cleaned copy or raises ValueError."""
-    missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+def validate(df: pd.DataFrame, sensors: list[str] | None = None) -> pd.DataFrame:
+    """Check schema and types. Returns a cleaned copy or raises ValueError.
+
+    sensors: the expected sensor columns. Defaults to the pump schema for
+    backward compatibility; multi-industry callers pass their template's
+    sensors.
+    """
+    sensors = list(sensors) if sensors else list(SENSORS)
+    required = ["timestamp", "machine_id", *sensors]
+    missing = [c for c in required if c not in df.columns]
     if missing:
         raise ValueError(f"missing required columns: {missing}")
 
-    out = df[REQUIRED_COLUMNS].copy()
+    out = df[required].copy()
     out["timestamp"] = pd.to_datetime(out["timestamp"], errors="coerce")
     if out["timestamp"].isna().any():
         raise ValueError("timestamp column contains unparseable values")
 
-    for sensor in SENSORS:
+    for sensor in sensors:
         out[sensor] = pd.to_numeric(out[sensor], errors="coerce")
         if out[sensor].isna().any():
             raise ValueError(f"sensor column {sensor!r} contains non-numeric values")

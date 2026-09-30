@@ -40,6 +40,8 @@ def diagnose(
     recent_feats: pd.DataFrame,
     z_floor: float = 0.5,
     max_findings: int = 4,
+    sensors: list[str] | None = None,
+    sensor_units: dict[str, str] | None = None,
 ) -> tuple[list[Finding], list[str]]:
     """Compare recent feature windows against baseline.
 
@@ -48,9 +50,11 @@ def diagnose(
     health state machine; this function just describes the strongest evidence
     factually. Features below z_floor count as stable.
     """
+    sensor_list = list(sensors) if sensors else list(SENSORS)
+    units = sensor_units or {}
     candidates: list[Finding] = []
-    for sensor in SENSORS:
-        unit = SENSORS[sensor]["unit"]
+    for sensor in sensor_list:
+        unit = units.get(sensor, SENSORS.get(sensor, {}).get("unit", ""))
         for feature in FEATURES:
             col = f"{sensor}_{feature}"
             base = baseline_feats[col]
@@ -78,7 +82,7 @@ def diagnose(
             represented.add(f.sensor)
     findings.sort(key=lambda f: f.severity, reverse=True)
     flagged = {f.sensor for f in candidates}
-    stable = [s for s in SENSORS if s not in flagged]
+    stable = [s for s in sensor_list if s not in flagged]
     return findings, stable
 
 
@@ -99,10 +103,12 @@ def classify(findings: list[Finding]) -> tuple[str, str]:
             f"possible {top.replace('_', ' ')} sensor issue rather than machine degradation",
             "medium",
         )
-    if "vibration" in unique and "bearing_temp" in unique:
+    has_vibration = any("vibration" in s for s in unique)
+    has_temp = any("temp" in s for s in unique)
+    if has_vibration and has_temp:
         return "early bearing wear", "high"
-    if top in ("vibration", "motor_current"):
+    if "vibration" in top or "current" in top:
         return f"developing mechanical issue led by {top.replace('_', ' ')}", "medium"
-    if top == "bearing_temp":
+    if "temp" in top:
         return "developing thermal issue", "medium"
     return "developing anomaly", "low"

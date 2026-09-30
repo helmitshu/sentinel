@@ -1,1 +1,50 @@
-{"cmapss_fd001":{"alerts_that_self_cleared":0,"caveats":["FD001 covers a single operating condition and a single fault mode.","Lead times are in engine cycles, not wall-clock time."],"dataset":"NASA C-MAPSS FD001: 100 turbofan engines, run-to-failure sensor histories","detected_before_eol":98,"detection_rate":0.98,"engines":100,"median_lead_time_alert_cycles":47.5,"median_lead_time_warning_cycles":77.0},"cwru":{"auroc":0.9721,"caveats":["0.5 second non-overlapping windows; threshold at 99th percentile of baseline."],"dataset":"CWRU bearing vibration: normal baselines plus seeded inner-race, ball, and outer-race faults","detection_rate_per_file":{"ball":"85 to 95% per file","inner_race":"4 of 4 files, 100%","outer_race":"4 of 4 files, 100%"},"heldout_normal":"1 of 20 windows flagged on a held-out normal file (5% false positive rate)"},"method":"Unsupervised throughout. Labels used only for scoring, never for training."}
+{
+  "cmapss_fd001": {
+    "engines": 100,
+    "detected_before_eol": 98,
+    "detection_rate": 0.98,
+    "median_lead_time_warning_cycles": 77.0,
+    "median_lead_time_alert_cycles": 47.5,
+    "min_lead_time_alert_cycles": 3.0,
+    "alerts_that_self_cleared": 0,
+    "dataset": "NASA C-MAPSS FD001: 100 turbofan engines, run-to-failure sensor histories",
+    "caveats": [
+      "FD001 covers a single operating condition and a single fault mode.",
+      "Lead times are in engine cycles, not wall-clock time."
+    ]
+  },
+  "cwru": {
+    "window_seconds": 0.5,
+    "baseline_files": [
+      "97",
+      "98"
+    ],
+    "heldout_normal_files": [
+      "100"
+    ],
+    "heldout_normal_windows": 20,
+    "heldout_false_positives": 1,
+    "heldout_false_positive_rate": 0.05,
+    "auroc": 0.9721,
+    "detection_rate_per_file": {
+      "inner_race_105": 1.0,
+      "inner_race_106": 1.0,
+      "inner_race_107": 1.0,
+      "inner_race_108": 1.0,
+      "ball_118": 0.9,
+      "ball_119": 0.85,
+      "ball_120": 0.95,
+      "ball_121": 0.9,
+      "outer_race_130": 1.0,
+      "outer_race_131": 1.0,
+      "outer_race_132": 1.0,
+      "outer_race_133": 1.0
+    },
+    "dataset": "CWRU bearing vibration: normal baselines plus seeded inner-race, ball, and outer-race faults",
+    "caveats": [
+      "0.5 second non-overlapping windows; threshold at 99th percentile of baseline.",
+      "Held-out normal file: 1 of 20 windows flagged (5% false positive rate)."
+    ]
+  },
+  "method": "Unsupervised throughout. Labels used only for scoring, never for training."
+}
