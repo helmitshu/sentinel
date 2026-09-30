@@ -1,0 +1,18 @@
+# sentinel: predictive maintenance engine
+scikit-learn==1.9.1
+pandas==3.0.6
+numpy==2.5.3
+scipy==1.18.1
+
+# API + dashboard
+fastapi==0.142.2
+uvicorn==0.54.0
+streamlit==1.64.0
+plotly==7.1.0
+requests==2.34.2
+
+# tests
+pytest==9.1.1
+
+# optional: LLM explainer (template fallback is the default)
+# anthropic
