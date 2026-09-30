@@ -42,6 +42,7 @@ class MachineMonitor:
         self._last_state = "ok"
         self._last_health = 100.0
         self._last_trend = "stable"
+        self._worst_rank = 0  # worst state rank seen since the last ok (0=ok..3=alert)
         self._last_score = 0.0  # normalized anomaly score of the most recent window
         self._last_raw_score = 0.0  # unclipped IF score before median/p99 scaling
         self._last_features: dict | None = None  # feature row of the most recent window
@@ -112,7 +113,9 @@ class MachineMonitor:
         raw_scores = -self._detector.model.decision_function(feats[cols])
         scores = self._detector.score(feats)
         feat_rows = feats.to_dict("records")
-        for ts, score, raw, frow in zip(feats["timestamp"], scores, raw_scores, feat_rows):
+        for i, (ts, score, raw, frow) in enumerate(
+            zip(feats["timestamp"], scores, raw_scores, feat_rows)
+        ):
             res = self._tracker.update(float(score))
             self._last_health, self._last_state = res["health"], res["state"]
             self._last_trend = res["trend"]
@@ -123,19 +126,52 @@ class MachineMonitor:
             self._history.append(
                 {"timestamp": str(ts), "health": res["health"], "state": res["state"]}
             )
+            # check for a state transition on every window, not once per
+            # ingest call: bulk ingestion (replay, CSV upload) must produce
+            # the same alerts as a live stream.
+            window_end = self._processed + (i + 1) * self.window
+            self._maybe_alert(df, ts, window_end)
         self._processed = end
-        self._maybe_alert(df)
 
-    def _maybe_alert(self, df: pd.DataFrame) -> None:
+    def _maybe_alert(self, df: pd.DataFrame, ts, window_end: int) -> None:
         from sentinel.diagnostics import classify
 
+        rank = {"ok": 0, "watch": 1, "advisory": 2, "alert": 3}
         state = self._last_state
-        prev = self.alerts[-1]["state"] if self.alerts else "ok"
-        if state == prev or state == "watch":
+        if state == "ok":
+            # recovery: mention it once if we had warned before
+            if self._worst_rank >= 2:
+                self._record_alert(df, ts, window_end, state, recovered=True)
+            self._worst_rank = 0
             return
-        # state changed into/out of advisory|alert: explain it from data
+        if state == "watch":
+            return
+        if rank[state] <= self._worst_rank:
+            return  # already warned at this level or worse; no re-paging
+        self._worst_rank = rank[state]
+        self._record_alert(df, ts, window_end, state)
+
+    def _record_alert(
+        self, df: pd.DataFrame, ts, window_end: int, state: str,
+        recovered: bool = False,
+    ) -> None:
+        from sentinel.diagnostics import classify
+
+        if recovered:
+            self.alerts.append({
+                "timestamp": str(ts),
+                "machine_id": self.machine_id,
+                "state": state,
+                "health": round(self._last_health, 1),
+                "recovered": True,
+                "explanation": f"{self.machine_id} has recovered to full health.",
+                "findings": [],
+            })
+            return
+        # state changed into advisory|alert: explain it from data
+        start = max(0, window_end - 24 * self.window)
         recent = compute_features(
-            df.iloc[-24 * self.window :], window=self.window, sensors=self.sensors
+            df.iloc[start:window_end], window=self.window, sensors=self.sensors
         )
         findings, stable = diagnose(self._baseline_features, recent)
         hint, confidence = classify(findings)
@@ -145,10 +181,11 @@ class MachineMonitor:
         elif "thermal" in hint or "overheat" in hint:
             action = "check cooling and loading, inspect within 48 hours"
         entry = {
-            "timestamp": str(df["timestamp"].max()),
+            "timestamp": str(ts),
             "machine_id": self.machine_id,
             "state": state,
             "health": round(self._last_health, 1),
+            "recovered": False,
             "explanation": self._explainer.explain(
                 machine_id=self.machine_id,
                 findings=findings,

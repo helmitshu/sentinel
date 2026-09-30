@@ -1,16 +1,72 @@
 """Sentinel API: ingest telemetry, read machine health, review alerts."""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from sentinel.monitor import MachineMonitor
 from sentinel.simulator import SENSORS, PumpSimulator
+from sentinel.store import ReadingStore
 
-app = FastAPI(title="Sentinel", description="Predictive maintenance engine")
+store = ReadingStore()
 
 monitors: dict[str, MachineMonitor] = {}
+
+
+def _build_fleet() -> None:
+    """Seed the demo fleet: 30 days of history for 3 pumps, one healthy,
+    one developing bearing wear, one overheating. Idempotent."""
+    # fixed seed 3 for all three: verified clean stories (P-101 no alerts;
+    # P-102/P-103 alert after fault onset, no self-clearing). see
+    # scripts/find_demo_seeds.py. hash() is randomized per process, so it
+    # would give a different (possibly noisy) fleet on every restart.
+    fleet = [
+        ("P-101", 3, None, None),
+        ("P-102", 3, "bearing_wear", 14),
+        ("P-103", 3, "overheating", 20),
+    ]
+    for machine_id, seed, fault, day in fleet:
+        # clear any previous readings so re-seeding never duplicates rows
+        store.delete_machine(machine_id)
+        if machine_id in monitors:
+            del monitors[machine_id]
+        sim = PumpSimulator(seed=seed)
+        df = sim.run(days=30, fault=fault, fault_start_day=day)
+        df["machine_id"] = machine_id
+        df["timestamp"] = df["timestamp"].astype(str)
+        mon = MachineMonitor(machine_id)
+        monitors[machine_id] = mon
+        # ingest day by day, like a real stream, so alerts tell the story
+        for start in range(0, 30):
+            chunk = df.iloc[start * 1440 : (start + 1) * 1440]
+            records = chunk.to_dict("records")
+            mon.ingest(records)
+            store.save(records)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Rebuild monitors from durable storage. The replay is deterministic:
+    # same readings in the same order produce the same health and alerts.
+    for machine_id in store.machine_ids():
+        mon = MachineMonitor(machine_id)
+        monitors[machine_id] = mon
+        mon.ingest(store.load(machine_id))
+    if not monitors:
+        # first boot (or the database was wiped): seed the demo fleet so
+        # the dashboard is never blank.
+        _build_fleet()
+    yield
+
+
+app = FastAPI(
+    title="Sentinel",
+    description="Predictive maintenance engine",
+    lifespan=lifespan,
+)
 
 
 class Reading(BaseModel):
@@ -43,6 +99,7 @@ def ingest(batch: IngestBatch):
         mon = monitors.get(machine_id) or MachineMonitor(machine_id)
         monitors[machine_id] = mon
         statuses.append(mon.ingest(readings))
+        store.save(readings)
     return {"machines": statuses}
 
 
@@ -83,28 +140,9 @@ def score_breakdown(machine_id: str):
 
 @app.post("/demo/seed")
 def seed():
-    """Build a demo fleet: 30 days of history for 3 pumps, one healthy,
-    one developing bearing wear, one overheating. Idempotent."""
-    # fixed seed 3 for all three: verified clean stories (P-101 no alerts;
-    # P-102/P-103 alert after fault onset, no self-clearing). see
-    # scripts/find_demo_seeds.py. hash() is randomized per process, so it
-    # would give a different (possibly noisy) fleet on every restart.
-    fleet = [
-        ("P-101", 3, None, None),
-        ("P-102", 3, "bearing_wear", 14),
-        ("P-103", 3, "overheating", 20),
-    ]
-    for machine_id, seed, fault, day in fleet:
-        sim = PumpSimulator(seed=seed)
-        df = sim.run(days=30, fault=fault, fault_start_day=day)
-        df["machine_id"] = machine_id
-        df["timestamp"] = df["timestamp"].astype(str)
-        mon = MachineMonitor(machine_id)
-        monitors[machine_id] = mon
-        # ingest day by day, like a real stream, so alerts tell the story
-        for start in range(0, 30):
-            chunk = df.iloc[start * 1440 : (start + 1) * 1440]
-            mon.ingest(chunk.to_dict("records"))
+    """Ensure the demo fleet is loaded (replaces the three demo machines,
+    leaves any uploaded machines alone)."""
+    _build_fleet()
     return [m.status() for m in monitors.values()]
 
 
