@@ -1,3 +1,4 @@
+
 """Sentinel API: ingest telemetry, read machine health, review alerts."""
 from __future__ import annotations
 
@@ -133,6 +134,7 @@ def history(machine_id: str):
 def score_breakdown(machine_id: str):
     """How each score was calculated: formulas plus the actual values used."""
     try:
+    try:
         return _monitor(machine_id).score_breakdown()
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -144,6 +146,47 @@ def seed():
     leaves any uploaded machines alone)."""
     _build_fleet()
     return [m.status() for m in monitors.values()]
+
+
+class Scenario(BaseModel):
+    fault: str = "bearing_wear"  # bearing_wear | overheating | sensor_drift | healthy
+
+
+SCENARIO_IDS = {
+    "bearing_wear": "SIM-BW",
+    "overheating": "SIM-OH",
+    "sensor_drift": "SIM-SD",
+    "healthy": "SIM-OK",
+}
+# fixed seeds per scenario so the story is the same on every click
+SCENARIO_SEEDS = {"bearing_wear": 11, "overheating": 12, "sensor_drift": 13, "healthy": 14}
+
+
+@app.post("/demo/scenario")
+def scenario(sc: Scenario):
+    """One-click demo: simulate 30 days for a new machine with the chosen
+    fault (or none) and ingest it. Re-running the same scenario replaces
+    that machine. Lets a visitor watch the full detect-and-explain loop
+    without preparing their own data."""
+    fault = sc.fault if sc.fault != "healthy" else None
+    if sc.fault not in SCENARIO_IDS:
+        raise HTTPException(400, f"unknown scenario {sc.fault!r}")
+    machine_id = SCENARIO_IDS[sc.fault]
+    store.delete_machine(machine_id)
+    if machine_id in monitors:
+        del monitors[machine_id]
+    sim = PumpSimulator(seed=SCENARIO_SEEDS[sc.fault])
+    df = sim.run(days=30, fault=fault, fault_start_day=14)
+    df["machine_id"] = machine_id
+    df["timestamp"] = df["timestamp"].astype(str)
+    mon = MachineMonitor(machine_id)
+    monitors[machine_id] = mon
+    for start in range(30):
+        chunk = df.iloc[start * 1440 : (start + 1) * 1440]
+        records = chunk.to_dict("records")
+        mon.ingest(records)
+        store.save(records)
+    return mon.status()
 
 
 @app.get("/health")
