@@ -132,7 +132,7 @@ def history(machine_id: str):
 
 @app.get("/machines/{machine_id}/score_breakdown")
 def score_breakdown(machine_id: str):
-    """How each score was calculated: formulas plus the actual values used\."""
+    """How each score was calculated: formulas plus the actual values used."""
     try:
         return _monitor(machine_id).score_breakdown()
     except ValueError as e:
