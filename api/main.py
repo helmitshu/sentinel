@@ -18,9 +18,9 @@ class Reading(BaseModel):
     machine_id: str
     vibration: float
     bearing_temp: float
+    discharge_pressure: float
+    rpm: float
     motor_current: float
-    pressure: float
-    flow_rate: float
 
 
 class IngestBatch(BaseModel):
