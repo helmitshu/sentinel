@@ -1,5 +1,6 @@
 """Live machine monitor: the piece that runs in production.
 
+
 A MachineMonitor owns one machine's full pipeline: ingest readings, maintain
 a rolling feature buffer, score with the Isolation Forest, track health, and
 log alerts with grounded explanations when the state changes.
@@ -272,6 +273,8 @@ class MachineMonitor:
             "state": self._last_state,
             "readings": len(self._readings),
             "alerts": len(self.alerts),
+            "trend": self._last_trend,
+            "trend": self._last_trend,
         }
 
     def telemetry(self, n: int = 1440) -> list[dict]:
