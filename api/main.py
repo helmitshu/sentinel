@@ -6,10 +6,11 @@ from contextlib import asynccontextmanager
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
+from sentinel.industries import FAULTS, get_template
 from sentinel.monitor import MachineMonitor
-from sentinel.simulator import SENSORS, PumpSimulator
+from sentinel.simulator import SENSORS, PumpSimulator, simulator_for
 from sentinel.store import ReadingStore
 
 store = ReadingStore()
@@ -71,17 +72,18 @@ app = FastAPI(
 
 
 class Reading(BaseModel):
+    """One telemetry reading. Sensor fields are free-form: the industry
+    template on the batch decides which sensors are required."""
+
+    model_config = ConfigDict(extra="allow")
+
     timestamp: str
     machine_id: str
-    vibration: float
-    bearing_temp: float
-    discharge_pressure: float
-    rpm: float
-    motor_current: float
 
 
 class IngestBatch(BaseModel):
     readings: list[Reading]
+    industry: str | None = None  # industry template id; defaults to "pump"
 
 
 def _monitor(machine_id: str) -> MachineMonitor:
@@ -92,15 +94,31 @@ def _monitor(machine_id: str) -> MachineMonitor:
 
 @app.post("/ingest")
 def ingest(batch: IngestBatch):
+    industry = batch.industry or "pump"
+    try:
+        tpl = get_template(industry)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    sensors = list(tpl["sensors"])
+    sensor_units = {name: spec["unit"] for name, spec in tpl["sensors"].items()}
     by_machine: dict[str, list[dict]] = {}
     for r in batch.readings:
         by_machine.setdefault(r.machine_id, []).append(r.model_dump())
     statuses = []
     for machine_id, readings in by_machine.items():
-        mon = monitors.get(machine_id) or MachineMonitor(machine_id)
-        monitors[machine_id] = mon
-        statuses.append(mon.ingest(readings))
-        store.save(readings)
+        mon = monitors.get(machine_id)
+        if mon is None:
+            mon = MachineMonitor(machine_id, sensors=sensors,
+                                 sensor_units=sensor_units)
+            monitors[machine_id] = mon
+        try:
+            statuses.append(mon.ingest(readings))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        # the durable store keeps the pump demo fleet; other industries are
+        # ephemeral demos, regenerated on demand
+        if industry == "pump":
+            store.save(readings)
     return {"machines": statuses}
 
 
@@ -149,16 +167,31 @@ def seed():
 
 class Scenario(BaseModel):
     fault: str = "bearing_wear"  # bearing_wear | overheating | sensor_drift | healthy
+    industry: str = "pump"  # pump | mining_shovel
 
 
+# (industry, fault) -> machine id. Pump ids are the originals, kept stable.
 SCENARIO_IDS = {
-    "bearing_wear": "SIM-BW",
-    "overheating": "SIM-OH",
-    "sensor_drift": "SIM-SD",
-    "healthy": "SIM-OK",
+    ("pump", "bearing_wear"): "SIM-BW",
+    ("pump", "overheating"): "SIM-OH",
+    ("pump", "sensor_drift"): "SIM-SD",
+    ("pump", "healthy"): "SIM-OK",
+    ("mining_shovel", "bearing_wear"): "SHOVEL-BW",
+    ("mining_shovel", "overheating"): "SHOVEL-OH",
+    ("mining_shovel", "sensor_drift"): "SHOVEL-SD",
+    ("mining_shovel", "healthy"): "SHOVEL-OK",
 }
 # fixed seeds per scenario so the story is the same on every click
-SCENARIO_SEEDS = {"bearing_wear": 11, "overheating": 12, "sensor_drift": 13, "healthy": 14}
+SCENARIO_SEEDS = {
+    ("pump", "bearing_wear"): 11,
+    ("pump", "overheating"): 12,
+    ("pump", "sensor_drift"): 13,
+    ("pump", "healthy"): 14,
+    ("mining_shovel", "bearing_wear"): 21,
+    ("mining_shovel", "overheating"): 22,
+    ("mining_shovel", "sensor_drift"): 23,
+    ("mining_shovel", "healthy"): 24,
+}
 
 
 @app.post("/demo/scenario")
@@ -166,25 +199,38 @@ def scenario(sc: Scenario):
     """One-click demo: simulate 30 days for a new machine with the chosen
     fault (or none) and ingest it. Re-running the same scenario replaces
     that machine. Lets a visitor watch the full detect-and-explain loop
-    without preparing their own data."""
+    without preparing their own data. The industry selects the sensor
+    schema and fault story (e.g. a mining shovel instead of a pump)."""
     fault = sc.fault if sc.fault != "healthy" else None
-    if sc.fault not in SCENARIO_IDS:
-        raise HTTPException(400, f"unknown scenario {sc.fault!r}")
-    machine_id = SCENARIO_IDS[sc.fault]
+    key = (sc.industry, sc.fault)
+    if key not in SCENARIO_IDS:
+        raise HTTPException(400, f"unknown scenario {sc.fault!r} for industry {sc.industry!r}")
+    try:
+        tpl = get_template(sc.industry)  # validates the industry id
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    machine_id = SCENARIO_IDS[key]
     store.delete_machine(machine_id)
     if machine_id in monitors:
         del monitors[machine_id]
-    sim = PumpSimulator(seed=SCENARIO_SEEDS[sc.fault])
+    sim = simulator_for(sc.industry, machine_id, seed=SCENARIO_SEEDS[key])
     df = sim.run(days=30, fault=fault, fault_start_day=14)
     df["machine_id"] = machine_id
     df["timestamp"] = df["timestamp"].astype(str)
-    mon = MachineMonitor(machine_id)
+    mon = MachineMonitor(
+        machine_id,
+        sensors=list(tpl["sensors"]),
+        sensor_units={n: sp["unit"] for n, sp in tpl["sensors"].items()},
+    )
     monitors[machine_id] = mon
     for start in range(30):
         chunk = df.iloc[start * 1440 : (start + 1) * 1440]
         records = chunk.to_dict("records")
         mon.ingest(records)
-        store.save(records)
+        # the durable store keeps the pump demo fleet; other industries are
+        # ephemeral demos, regenerated on demand
+        if sc.industry == "pump":
+            store.save(records)
     return mon.status()
 
 
