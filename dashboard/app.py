@@ -65,19 +65,11 @@ st.write(
 
 with st.expander("How it works: the pipeline"):
     st.write(
-        "1. **Ingest.** Raw sensor readings arrive (one row per minute per machine).
-"
-        "2. **Features.** Readings are grouped into 60 reading windows. Each window "
-        "becomes statistics: mean, spread, min, max, trend per sensor.
-"
-        "3. **Detect.** An Isolation Forest (unsupervised machine learning) scores "
-        "each window for abnormality against the machine's own baseline.
-"
-        "4. **Health.** Scores feed an EWMA health tracker, 0 to 100, calibrated per "
-        "machine: ok, watch, advisory, alert.
-"
-        "5. **Explain.** When an alert fires, diagnostics find which sensors deviated "
-        "and classify the likely fault, then write a grounded explanation."
+        """1. **Ingest.** Raw sensor readings arrive (one row per minute per machine).
+2. **Features.** Readings are grouped into 60 reading windows. Each window becomes statistics: mean, spread, min, max, trend per sensor.
+3. **Detect.** An Isolation Forest (unsupervised machine learning) scores each window for abnormality against the machine's own baseline.
+4. **Health.** Scores feed an EWMA health tracker, 0 to 100, calibrated per machine: ok, watch, advisory, alert.
+5. **Explain.** When an alert fires, diagnostics find which sensors deviated and classify the likely fault, then write a grounded explanation."""
     )
 
 if VALIDATION:
@@ -104,6 +96,7 @@ if VALIDATION:
             st.caption("Note: " + c)
         st.caption("Reproduce it: `python scripts/prepare_data.py` downloads the "
                    "public datasets, then `python scripts/validate.py` scores them.")
+
 try:
     machines = api("/machines")
 except Exception as e:
@@ -182,6 +175,7 @@ for col, (fault, label) in zip(scols, scenarios):
         with st.spinner(f"Simulating 30 days ({label.lower()})..."):
             api("/demo/scenario", method="post", json={"fault": fault})
         st.rerun()
+
 st.subheader("Test it with your own data")
 st.write(
     "Upload a CSV and Sentinel will learn that machine's baseline and watch it "
@@ -264,39 +258,31 @@ with st.expander("How is this score calculated?"):
         bd = api(f"/machines/{mid}/score_breakdown")
         h = bd["health"]
         st.write("**Health score**")
-        st.code(f"health = 100 * (1 - ewma)
+        st.code(
+            f"""health = 100 * (1 - ewma)
 ewma   = (1 - alpha) * previous_ewma + alpha * normalized_anomaly
-"
-                f"alpha = {h['alpha']}
-"
-                f"normalized_anomaly = (anomaly - baseline) / (1 - baseline), capped at 1
-"
-                f"  anomaly (last window) = {h['last_anomaly_score']}
-"
-                f"  baseline (this machine) = {h['baseline_anomaly']}
-"
-                f"current ewma = {h['current_ewma']}
-"
-                f"health = 100 * (1 - {h['current_ewma']}) = {h['health']:.0f}",
-                language="text")
+alpha = {h['alpha']}
+normalized_anomaly = (anomaly - baseline) / (1 - baseline), capped at 1
+  anomaly (last window) = {h['last_anomaly_score']}
+  baseline (this machine) = {h['baseline_anomaly']}
+current ewma = {h['current_ewma']}
+health = 100 * (1 - {h['current_ewma']}) = {h['health']:.0f}""",
+            language="text",
+        )
         st.write(f"Trend: **{h['trend']}**. Thresholds: watch below "
                  f"{h['thresholds']['watch']}, advisory below {h['thresholds']['advisory']}, "
                  f"alert below {h['thresholds']['alert']}.")
         a = bd["anomaly"]
         st.write("**Anomaly score (this window)**")
-        st.code(f"score = clip((raw - median) / (p99 - median), 0, 1)
-"
-                f"  raw Isolation Forest score = {a['last_raw_score']}
-"
-                f"  baseline median = {a['baseline_median']}
-"
-                f"  baseline 99th percentile = {a['baseline_p99']}
-"
-                f"score = ({a['last_raw_score']} - {a['baseline_median']}) / "
-                f"({a['baseline_p99']} - {a['baseline_median']}) = {a['last_normalized_score']}
-"
-                f"window = {a['window_readings']} readings, contamination = {a['contamination']}",
-                language="text")
+        st.code(
+            f"""score = clip((raw - median) / (p99 - median), 0, 1)
+  raw Isolation Forest score = {a['last_raw_score']}
+  baseline median = {a['baseline_median']}
+  baseline 99th percentile = {a['baseline_p99']}
+score = ({a['last_raw_score']} - {a['baseline_median']}) / ({a['baseline_p99']} - {a['baseline_median']}) = {a['last_normalized_score']}
+window = {a['window_readings']} readings, contamination = {a['contamination']}""",
+            language="text",
+        )
         st.write("**Sensor baselines** (learned from this machine's first 10 days)")
         st.table(pd.DataFrame([
             {"sensor": SENSOR_LABELS.get(s, s), "unit": v["unit"],
