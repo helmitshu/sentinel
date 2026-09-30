@@ -199,9 +199,58 @@ if not status["ready"]:
 
 c1, c2, c3 = st.columns(3)
 c1.metric("Current health", f"{status['health']:.0f} / 100",
-          help="100 is perfect. Below 90 is watch, below 80 advisory, below 60 alert.")
+          help="100 is perfect. Below 90 is watch, below 80 advisory, below 60 alert. "
+               "Open 'How is this score calculated?' below for the formula and the "
+               "actual values behind it.")
 c2.metric("State", status["state"].upper())
 c3.metric("Alerts raised", status["alerts"])
+
+with st.expander("How is this score calculated?"):
+    try:
+        bd = api(f"/machines/{mid}/score_breakdown")
+        h = bd["health"]
+        st.write("**Health score**")
+        st.code(f"health = 100 * (1 - ewma)\newma   = (1 - alpha) * previous_ewma + alpha * normalized_anomaly\n"
+                f"alpha = {h['alpha']}\n"
+                f"normalized_anomaly = (anomaly - baseline) / (1 - baseline), capped at 1\n"
+                f"  anomaly (last window) = {h['last_anomaly_score']}\n"
+                f"  baseline (this machine) = {h['baseline_anomaly']}\n"
+                f"current ewma = {h['current_ewma']}\n"
+                f"health = 100 * (1 - {h['current_ewma']}) = {h['health']:.0f}",
+                language="text")
+        st.write(f"Trend: **{h['trend']}**. Thresholds: watch below "
+                 f"{h['thresholds']['watch']}, advisory below {h['thresholds']['advisory']}, "
+                 f"alert below {h['thresholds']['alert']}.")
+        a = bd["anomaly"]
+        st.write("**Anomaly score (this window)**")
+        st.code(f"score = clip((raw - median) / (p99 - median), 0, 1)\n"
+                f"  raw Isolation Forest score = {a['last_raw_score']}\n"
+                f"  baseline median = {a['baseline_median']}\n"
+                f"  baseline 99th percentile = {a['baseline_p99']}\n"
+                f"score = ({a['last_raw_score']} - {a['baseline_median']}) / "
+                f"({a['baseline_p99']} - {a['baseline_median']}) = {a['last_normalized_score']}\n"
+                f"window = {a['window_readings']} readings, contamination = {a['contamination']}",
+                language="text")
+        st.write("**Sensor baselines** (learned from this machine's first 10 days)")
+        st.table(pd.DataFrame([
+            {"sensor": SENSOR_LABELS.get(s, s), "unit": v["unit"],
+             "baseline mean": v["baseline_mean"], "baseline std": v["baseline_std"]}
+            for s, v in bd["sensors"].items()
+        ]))
+        st.write("**Feature values**: current window vs baseline (top deviations)")
+        base, now = bd["features"]["baseline"], bd["features"]["current_window"]
+        rows = []
+        for col in base:
+            b, n = base[col], now.get(col)
+            if b is None or n is None:
+                continue
+            rows.append({"feature": col, "baseline": b, "current window": n,
+                         "change": round(n - b, 3)})
+        rows.sort(key=lambda r: abs(r["change"]) / (abs(r["baseline"]) or 1),
+                  reverse=True)
+        st.table(pd.DataFrame(rows[:10]))
+    except Exception as e:
+        st.error(f"Could not load the score breakdown: {e}")
 
 history = api(f"/machines/{mid}/history")
 if history:

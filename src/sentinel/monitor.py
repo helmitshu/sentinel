@@ -42,6 +42,9 @@ class MachineMonitor:
         self._last_state = "ok"
         self._last_health = 100.0
         self._last_trend = "stable"
+        self._last_score = 0.0  # normalized anomaly score of the most recent window
+        self._last_raw_score = 0.0  # unclipped IF score before median/p99 scaling
+        self._last_features: dict | None = None  # feature row of the most recent window
         self._history: list[dict] = []  # per-window {timestamp, health, state}
         self.alerts: list[dict] = []
         self._explainer = TemplateExplainer()
@@ -81,8 +84,15 @@ class MachineMonitor:
         baseline = float(self._detector.score(feats).mean())
         self._tracker = HealthTracker(alpha=0.05, baseline=baseline)
         last = {"health": 100.0, "state": "ok"}
-        for v in self._detector.score(feats):
+        scored = self._detector.score(feats)
+        raw_scored = -self._detector.model.decision_function(feats[cols])
+        for v, raw in zip(scored, raw_scored):
             last = self._tracker.update(v)
+        self._last_score = float(scored[-1])
+        self._last_raw_score = float(raw_scored[-1])
+        last_row = feats.iloc[-1].to_dict()
+        self._last_features = {k: v for k, v in last_row.items()
+                               if k not in ("timestamp", "machine_id")}
         self._processed = self.baseline_readings
         self._last_health = last["health"]
         self._last_state = last["state"]
@@ -98,11 +108,18 @@ class MachineMonitor:
         chunk = df.iloc[self._processed : end]
         feats = compute_features(chunk, window=self.window, sensors=self.sensors)
         assert len(feats) == new_windows, f"{len(feats)} != {new_windows}"
+        cols = self._detector._columns or feature_columns(self.sensors)
+        raw_scores = -self._detector.model.decision_function(feats[cols])
         scores = self._detector.score(feats)
-        for ts, score in zip(feats["timestamp"], scores):
+        feat_rows = feats.to_dict("records")
+        for ts, score, raw, frow in zip(feats["timestamp"], scores, raw_scores, feat_rows):
             res = self._tracker.update(float(score))
             self._last_health, self._last_state = res["health"], res["state"]
             self._last_trend = res["trend"]
+            self._last_score = float(score)
+            self._last_raw_score = float(raw)
+            self._last_features = {k: v for k, v in frow.items()
+                                   if k not in ("timestamp", "machine_id")}
             self._history.append(
                 {"timestamp": str(ts), "health": res["health"], "state": res["state"]}
             )
@@ -146,6 +163,69 @@ class MachineMonitor:
             "findings": [f.text for f in findings],
         }
         self.alerts.append(entry)
+
+    def score_breakdown(self) -> dict:
+        """Explain how the current scores were calculated, with real values.
+
+        Returns the formulas plus the actual numbers that went into them,
+        so a dashboard can show the working behind each score.
+        """
+        if not self.ready:
+            raise ValueError("machine is still learning its baseline")
+        det = self._detector
+        trk = self._tracker
+        assert det is not None and trk is not None
+        # per-sensor baseline stats from the calibration period
+        df = pd.DataFrame(list(self._readings)[: self.baseline_readings])
+        sensors = {}
+        for s in self.sensors:
+            unit = SENSORS.get(s, {}).get("unit", "")
+            sensors[s] = {
+                "unit": unit,
+                "baseline_mean": round(float(df[s].mean()), 3),
+                "baseline_std": round(float(df[s].std()), 3),
+                "last_value": round(float(df[s].iloc[-1]), 3)
+                if len(df) else None,
+            }
+        # baseline vs current feature values for the most deviant features
+        feat_base = {}
+        feat_now = {}
+        if self._baseline_features is not None and self._last_features:
+            for col in feature_columns(self.sensors):
+                feat_base[col] = round(float(self._baseline_features[col].mean()), 3)
+                v = self._last_features.get(col)
+                feat_now[col] = round(float(v), 3) if v is not None else None
+        return {
+            "health": {
+                "formula": "health = 100 * (1 - ewma)",
+                "ewma_formula": "ewma = (1 - alpha) * previous_ewma + alpha * normalized_anomaly",
+                "normalization": "normalized = (anomaly - baseline) / (1 - baseline), capped at 1",
+                "alpha": trk.alpha,
+                "baseline_anomaly": round(trk.baseline, 4),
+                "last_anomaly_score": round(self._last_score, 4),
+                "current_ewma": round(trk._ewma, 4),
+                "health": round(self._last_health, 1),
+                "trend": self._last_trend,
+                "thresholds": {"watch": 90, "advisory": 80, "alert": 60},
+            },
+            "anomaly": {
+                "formula": "score = clip((raw - median) / (p99 - median), 0, 1)",
+                "description": "Isolation Forest: how far this window's feature fingerprint "
+                               "sits outside the baseline distribution.",
+                "baseline_median": round(det._median, 4),
+                "baseline_p99": round(det._p99, 4),
+                "last_raw_score": round(self._last_raw_score, 4),
+                "last_normalized_score": round(self._last_score, 4),
+                "contamination": det.model.contamination,
+                "window_readings": self.window,
+            },
+            "sensors": sensors,
+            "features": {
+                "description": "Each 60-reading window becomes mean, std, min, max, slope per sensor.",
+                "baseline": feat_base,
+                "current_window": feat_now,
+            },
+        }
 
     def status(self) -> dict:
         return {

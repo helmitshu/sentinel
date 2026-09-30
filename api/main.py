@@ -72,6 +72,15 @@ def history(machine_id: str):
     return _monitor(machine_id).history()
 
 
+@app.get("/machines/{machine_id}/score_breakdown")
+def score_breakdown(machine_id: str):
+    """How each score was calculated: formulas plus the actual values used."""
+    try:
+        return _monitor(machine_id).score_breakdown()
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.post("/demo/seed")
 def seed():
     """Build a demo fleet: 30 days of history for 3 pumps, one healthy,
