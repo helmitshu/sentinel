@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import io
+import json
 import os
+from pathlib import Path
 
 import pandas as pd
 import requests
@@ -10,6 +12,12 @@ import streamlit as st
 import plotly.graph_objects as go
 
 API = os.environ.get("SENTINEL_API_URL", "http://localhost:8000")
+
+HERE = Path(__file__).resolve().parent
+try:
+    VALIDATION = json.loads((HERE / "validation_results.json").read_text())
+except Exception:
+    VALIDATION = None
 
 STATE_COLORS = {"ok": "green", "watch": "orange", "advisory": "orangered", "alert": "red"}
 
@@ -57,6 +65,34 @@ with st.expander("How it works: the pipeline"):
         "5. **Explain.** When an alert fires, diagnostics find which sensors deviated "
         "and classify the likely fault, then write a grounded explanation."
     )
+
+if VALIDATION:
+    with st.expander("Validation on real data"):
+        st.write(VALIDATION["method"])
+        cmapss = VALIDATION["cmapss_fd001"]
+        cwru = VALIDATION["cwru"]
+        vc1, vc2 = st.columns(2)
+        with vc1:
+            st.markdown("**NASA turbofan engines (C-MAPSS FD001)**")
+            st.metric("Detection rate",
+                      f"{cmapss['detection_rate']:.0%}",
+                      f"{cmapss['detected_before_eol']} of {cmapss['engines']} engines")
+            st.metric("Median alert lead time",
+                      f"{cmapss['median_lead_time_alert_cycles']:.0f} cycles")
+            st.metric("Alerts that self-cleared",
+                      cmapss["alerts_that_self_cleared"])
+            for c in cmapss["caveats"]:
+                st.caption("Note: " + c)
+        with vc2:
+            st.markdown("**Bearing vibration (CWRU)**")
+            st.metric("AUROC", f"{cwru['auroc']:.2f}")
+            for fault, rate in cwru["detection_rate_per_file"].items():
+                st.write(f"{fault.replace('_', ' ').title()}: {rate}")
+            st.caption("Held out normal file: " + cwru["heldout_normal"])
+            for c in cwru["caveats"]:
+                st.caption("Note: " + c)
+        st.caption("Reproduce it: `python scripts/prepare_data.py` downloads the "
+                   "public datasets, then `python scripts/validate.py` scores them.")
 
 try:
     machines = api("/machines")
