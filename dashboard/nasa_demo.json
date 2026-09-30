@@ -1,0 +1,721 @@
+{
+  "dataset": "NASA C-MAPSS FD001 (turbofan run-to-failure, real data)",
+  "method": "Unsupervised: Isolation Forest fit on cycles 1-60 only, then streamed cycle by cycle through the health tracker. No labels used for training.",
+  "engines": [
+    {
+      "engine": 69,
+      "eol": 362,
+      "trajectory": [
+        {
+          "cycle": 5,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 10,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 15,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 20,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 25,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 30,
+          "health": 98,
+          "state": "ok"
+        },
+        {
+          "cycle": 35,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 40,
+          "health": 95,
+          "state": "ok"
+        },
+        {
+          "cycle": 45,
+          "health": 96,
+          "state": "ok"
+        },
+        {
+          "cycle": 50,
+          "health": 98,
+          "state": "ok"
+        },
+        {
+          "cycle": 55,
+          "health": 99,
+          "state": "ok"
+        },
+        {
+          "cycle": 60,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 65,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 70,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 75,
+          "health": 99,
+          "state": "ok"
+        },
+        {
+          "cycle": 80,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 85,
+          "health": 99,
+          "state": "ok"
+        },
+        {
+          "cycle": 90,
+          "health": 99,
+          "state": "ok"
+        },
+        {
+          "cycle": 95,
+          "health": 97,
+          "state": "ok"
+        },
+        {
+          "cycle": 100,
+          "health": 98,
+          "state": "ok"
+        },
+        {
+          "cycle": 105,
+          "health": 96,
+          "state": "ok"
+        },
+        {
+          "cycle": 110,
+          "health": 96,
+          "state": "ok"
+        },
+        {
+          "cycle": 115,
+          "health": 94,
+          "state": "ok"
+        },
+        {
+          "cycle": 120,
+          "health": 95,
+          "state": "ok"
+        },
+        {
+          "cycle": 125,
+          "health": 95,
+          "state": "ok"
+        },
+        {
+          "cycle": 130,
+          "health": 93,
+          "state": "ok"
+        },
+        {
+          "cycle": 135,
+          "health": 92,
+          "state": "ok"
+        },
+        {
+          "cycle": 140,
+          "health": 92,
+          "state": "ok"
+        },
+        {
+          "cycle": 145,
+          "health": 87,
+          "state": "watch"
+        },
+        {
+          "cycle": 150,
+          "health": 83,
+          "state": "watch"
+        },
+        {
+          "cycle": 155,
+          "health": 80,
+          "state": "watch"
+        },
+        {
+          "cycle": 160,
+          "health": 77,
+          "state": "advisory"
+        },
+        {
+          "cycle": 165,
+          "health": 74,
+          "state": "advisory"
+        },
+        {
+          "cycle": 170,
+          "health": 71,
+          "state": "advisory"
+        },
+        {
+          "cycle": 175,
+          "health": 68,
+          "state": "advisory"
+        },
+        {
+          "cycle": 180,
+          "health": 67,
+          "state": "advisory"
+        },
+        {
+          "cycle": 185,
+          "health": 64,
+          "state": "advisory"
+        },
+        {
+          "cycle": 190,
+          "health": 60,
+          "state": "advisory"
+        },
+        {
+          "cycle": 195,
+          "health": 57,
+          "state": "alert"
+        },
+        {
+          "cycle": 200,
+          "health": 54,
+          "state": "alert"
+        },
+        {
+          "cycle": 205,
+          "health": 52,
+          "state": "alert"
+        },
+        {
+          "cycle": 210,
+          "health": 49,
+          "state": "alert"
+        },
+        {
+          "cycle": 215,
+          "health": 47,
+          "state": "alert"
+        },
+        {
+          "cycle": 220,
+          "health": 45,
+          "state": "alert"
+        },
+        {
+          "cycle": 225,
+          "health": 42,
+          "state": "alert"
+        },
+        {
+          "cycle": 230,
+          "health": 40,
+          "state": "alert"
+        },
+        {
+          "cycle": 235,
+          "health": 38,
+          "state": "alert"
+        },
+        {
+          "cycle": 240,
+          "health": 36,
+          "state": "alert"
+        },
+        {
+          "cycle": 245,
+          "health": 34,
+          "state": "alert"
+        },
+        {
+          "cycle": 250,
+          "health": 33,
+          "state": "alert"
+        },
+        {
+          "cycle": 255,
+          "health": 31,
+          "state": "alert"
+        },
+        {
+          "cycle": 260,
+          "health": 30,
+          "state": "alert"
+        },
+        {
+          "cycle": 265,
+          "health": 28,
+          "state": "alert"
+        },
+        {
+          "cycle": 270,
+          "health": 27,
+          "state": "alert"
+        },
+        {
+          "cycle": 275,
+          "health": 25,
+          "state": "alert"
+        },
+        {
+          "cycle": 280,
+          "health": 24,
+          "state": "alert"
+        },
+        {
+          "cycle": 285,
+          "health": 23,
+          "state": "alert"
+        },
+        {
+          "cycle": 290,
+          "health": 22,
+          "state": "alert"
+        },
+        {
+          "cycle": 295,
+          "health": 21,
+          "state": "alert"
+        },
+        {
+          "cycle": 300,
+          "health": 20,
+          "state": "alert"
+        },
+        {
+          "cycle": 305,
+          "health": 19,
+          "state": "alert"
+        },
+        {
+          "cycle": 310,
+          "health": 18,
+          "state": "alert"
+        },
+        {
+          "cycle": 315,
+          "health": 17,
+          "state": "alert"
+        },
+        {
+          "cycle": 320,
+          "health": 16,
+          "state": "alert"
+        },
+        {
+          "cycle": 325,
+          "health": 15,
+          "state": "alert"
+        },
+        {
+          "cycle": 330,
+          "health": 14,
+          "state": "alert"
+        },
+        {
+          "cycle": 335,
+          "health": 14,
+          "state": "alert"
+        },
+        {
+          "cycle": 340,
+          "health": 13,
+          "state": "alert"
+        },
+        {
+          "cycle": 345,
+          "health": 12,
+          "state": "alert"
+        },
+        {
+          "cycle": 350,
+          "health": 12,
+          "state": "alert"
+        },
+        {
+          "cycle": 355,
+          "health": 11,
+          "state": "alert"
+        },
+        {
+          "cycle": 360,
+          "health": 11,
+          "state": "alert"
+        }
+      ],
+      "first_warning_cycle": 170,
+      "first_alert_cycle": 205,
+      "lead_warning": 192,
+      "lead_alert": 157
+    },
+    {
+      "engine": 26,
+      "eol": 199,
+      "trajectory": [
+        {
+          "cycle": 5,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 10,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 15,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 20,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 25,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 30,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 35,
+          "health": 99,
+          "state": "ok"
+        },
+        {
+          "cycle": 40,
+          "health": 97,
+          "state": "ok"
+        },
+        {
+          "cycle": 45,
+          "health": 99,
+          "state": "ok"
+        },
+        {
+          "cycle": 50,
+          "health": 95,
+          "state": "ok"
+        },
+        {
+          "cycle": 55,
+          "health": 98,
+          "state": "ok"
+        },
+        {
+          "cycle": 60,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 65,
+          "health": 99,
+          "state": "ok"
+        },
+        {
+          "cycle": 70,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 75,
+          "health": 96,
+          "state": "ok"
+        },
+        {
+          "cycle": 80,
+          "health": 92,
+          "state": "ok"
+        },
+        {
+          "cycle": 85,
+          "health": 89,
+          "state": "watch"
+        },
+        {
+          "cycle": 90,
+          "health": 85,
+          "state": "watch"
+        },
+        {
+          "cycle": 95,
+          "health": 80,
+          "state": "watch"
+        },
+        {
+          "cycle": 100,
+          "health": 79,
+          "state": "advisory"
+        },
+        {
+          "cycle": 105,
+          "health": 75,
+          "state": "advisory"
+        },
+        {
+          "cycle": 110,
+          "health": 73,
+          "state": "advisory"
+        },
+        {
+          "cycle": 115,
+          "health": 70,
+          "state": "advisory"
+        },
+        {
+          "cycle": 120,
+          "health": 67,
+          "state": "advisory"
+        },
+        {
+          "cycle": 125,
+          "health": 66,
+          "state": "advisory"
+        },
+        {
+          "cycle": 130,
+          "health": 63,
+          "state": "advisory"
+        },
+        {
+          "cycle": 135,
+          "health": 60,
+          "state": "advisory"
+        },
+        {
+          "cycle": 140,
+          "health": 57,
+          "state": "alert"
+        },
+        {
+          "cycle": 145,
+          "health": 54,
+          "state": "alert"
+        },
+        {
+          "cycle": 150,
+          "health": 51,
+          "state": "alert"
+        },
+        {
+          "cycle": 155,
+          "health": 49,
+          "state": "alert"
+        },
+        {
+          "cycle": 160,
+          "health": 46,
+          "state": "alert"
+        },
+        {
+          "cycle": 165,
+          "health": 44,
+          "state": "alert"
+        },
+        {
+          "cycle": 170,
+          "health": 42,
+          "state": "alert"
+        },
+        {
+          "cycle": 175,
+          "health": 40,
+          "state": "alert"
+        },
+        {
+          "cycle": 180,
+          "health": 38,
+          "state": "alert"
+        },
+        {
+          "cycle": 185,
+          "health": 36,
+          "state": "alert"
+        },
+        {
+          "cycle": 190,
+          "health": 34,
+          "state": "alert"
+        },
+        {
+          "cycle": 195,
+          "health": 32,
+          "state": "alert"
+        }
+      ],
+      "first_warning_cycle": 110,
+      "first_alert_cycle": 150,
+      "lead_warning": 89,
+      "lead_alert": 49
+    },
+    {
+      "engine": 39,
+      "eol": 128,
+      "trajectory": [
+        {
+          "cycle": 5,
+          "health": 98,
+          "state": "ok"
+        },
+        {
+          "cycle": 10,
+          "health": 98,
+          "state": "ok"
+        },
+        {
+          "cycle": 15,
+          "health": 95,
+          "state": "ok"
+        },
+        {
+          "cycle": 20,
+          "health": 96,
+          "state": "ok"
+        },
+        {
+          "cycle": 25,
+          "health": 99,
+          "state": "ok"
+        },
+        {
+          "cycle": 30,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 35,
+          "health": 96,
+          "state": "ok"
+        },
+        {
+          "cycle": 40,
+          "health": 98,
+          "state": "ok"
+        },
+        {
+          "cycle": 45,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 50,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 55,
+          "health": 99,
+          "state": "ok"
+        },
+        {
+          "cycle": 60,
+          "health": 100,
+          "state": "ok"
+        },
+        {
+          "cycle": 65,
+          "health": 97,
+          "state": "ok"
+        },
+        {
+          "cycle": 70,
+          "health": 92,
+          "state": "ok"
+        },
+        {
+          "cycle": 75,
+          "health": 88,
+          "state": "watch"
+        },
+        {
+          "cycle": 80,
+          "health": 83,
+          "state": "watch"
+        },
+        {
+          "cycle": 85,
+          "health": 79,
+          "state": "advisory"
+        },
+        {
+          "cycle": 90,
+          "health": 75,
+          "state": "advisory"
+        },
+        {
+          "cycle": 95,
+          "health": 71,
+          "state": "advisory"
+        },
+        {
+          "cycle": 100,
+          "health": 68,
+          "state": "advisory"
+        },
+        {
+          "cycle": 105,
+          "health": 64,
+          "state": "advisory"
+        },
+        {
+          "cycle": 110,
+          "health": 61,
+          "state": "advisory"
+        },
+        {
+          "cycle": 115,
+          "health": 58,
+          "state": "alert"
+        },
+        {
+          "cycle": 120,
+          "health": 55,
+          "state": "alert"
+        },
+        {
+          "cycle": 125,
+          "health": 53,
+          "state": "alert"
+        }
+      ],
+      "first_warning_cycle": 95,
+      "first_alert_cycle": 125,
+      "lead_warning": 33,
+      "lead_alert": 3
+    }
+  ],
+  "labels": {
+    "early": 69,
+    "typical": 26,
+    "late": 39
+  }
+}
